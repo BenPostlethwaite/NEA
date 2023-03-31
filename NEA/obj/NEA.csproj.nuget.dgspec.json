@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "H:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj": {}
+    "h:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj": {}
   },
   "projects": {
-    "H:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj": {
+    "h:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "H:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj",
+        "projectUniqueName": "h:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj",
         "projectName": "NEA",
-        "projectPath": "H:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj",
+        "projectPath": "h:\\My Drive\\Computer science\\NEA\\NEA\\NEA.csproj",
         "packagesPath": "C:\\Users\\benpo\\.nuget\\packages\\",
-        "outputPath": "H:\\My Drive\\Computer science\\NEA\\NEA\\obj\\",
+        "outputPath": "h:\\My Drive\\Computer science\\NEA\\NEA\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\benpo\\AppData\\Roaming\\NuGet\\NuGet.Config",

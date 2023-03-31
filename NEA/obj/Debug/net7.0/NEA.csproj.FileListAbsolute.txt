@@ -1,0 +1,15 @@
+h:\My Drive\Computer science\NEA\NEA\bin\Debug\net7.0\NEA.exe
+h:\My Drive\Computer science\NEA\NEA\bin\Debug\net7.0\NEA.deps.json
+h:\My Drive\Computer science\NEA\NEA\bin\Debug\net7.0\NEA.runtimeconfig.json
+h:\My Drive\Computer science\NEA\NEA\bin\Debug\net7.0\NEA.dll
+h:\My Drive\Computer science\NEA\NEA\bin\Debug\net7.0\NEA.pdb
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.csproj.AssemblyReference.cache
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.GeneratedMSBuildEditorConfig.editorconfig
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.AssemblyInfoInputs.cache
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.AssemblyInfo.cs
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.csproj.CoreCompileInputs.cache
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.dll
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\refint\NEA.dll
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.pdb
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\NEA.genruntimeconfig.cache
+h:\My Drive\Computer science\NEA\NEA\obj\Debug\net7.0\ref\NEA.dll
