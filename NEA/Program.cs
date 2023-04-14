@@ -1,13 +1,16 @@
-namespace NEA;
+using System.Numerics;
 using expression;
-using matrix;
+using complex;
+namespace NEA;
+
+
 public class Program
 {
     public static void Main(string[] args)
     {
-        Expression e = new Expression("2 2 + 3 3 + *");
-        Console.WriteLine(e.Evaluate());
-        Matrix m = new Matrix(2, 2);
-        m.Print();
+        Expression e = Expression.ExpressionFromRPN("(x+2*a)*(x-2)", "infix");
+        Console.WriteLine(e);
+        e.Simplify();
+        Console.WriteLine(e);
     }
 }

@@ -1,6 +1,28 @@
-﻿using System;
-using System.Numerics;
+﻿using System.Net.Sockets;
 namespace matrix;
+struct Line
+{
+    double m;
+    double c;
+    public Line(double m, double c)
+    {
+        this.m = m;
+        this.c = c;
+    }
+    public double y(double x)
+    {
+        return m * x + c;
+    }
+    public double x(double y)
+    {
+        return (y - c) / m;
+    }
+    public override string ToString()
+    {
+        return $"{m}x + {c}";
+    }
+
+}
 public class Matrix
 {
     public double[,] matrix;
@@ -94,7 +116,6 @@ public class Matrix
         }
         return new Matrix(result);
     }
-
     public double determinant
     {
         get
@@ -121,35 +142,58 @@ public class Matrix
                 return result;
             }
         }
-    }
+    }    
     private double Cofactor(int row, int column)
     {
-        double[,] temp = new double[matrix.GetLength(0) - 1, matrix.GetLength(1) - 1];
-        int tempRow = 0;
+        return Math.Pow(-1, row + column) * Minor(row, column);
+    }
+    private double Minor(int row, int column)
+    {
+        double[,] result = new double[matrix.GetLength(0) - 1, matrix.GetLength(1) - 1];
+        int r = 0;
         for (int i = 0; i < matrix.GetLength(0); i++)
         {
             if (i == row)
             {
                 continue;
             }
-            int tempColumn = 0;
+            int c = 0;
             for (int j = 0; j < matrix.GetLength(1); j++)
             {
                 if (j == column)
                 {
                     continue;
                 }
-                temp[tempRow, tempColumn] = matrix[i, j];
-                tempColumn++;
+                result[r, c] = matrix[i, j];
+                c++;
             }
-            tempRow++;
+            r++;
         }
-        return new Matrix(temp).determinant * Math.Pow(-1, row + column);
+        return new Matrix(result).determinant;
     }
-    public Matrix Inverse
+    private Matrix Transpose
     {
         get
         {
+            double[,] result = new double[matrix.GetLength(1), matrix.GetLength(0)];
+            for (int i = 0; i < matrix.GetLength(0); i++)
+            {
+                for (int j = 0; j < matrix.GetLength(1); j++)
+                {
+                    result[j, i] = matrix[i, j];
+                }
+            }
+            return new Matrix(result);
+        }
+    }
+    public Matrix inverse
+    {
+        get
+        {
+            if (!isSquare)
+            {
+                throw new Exception("Matrix is not square");
+            }
             double[,] result = new double[matrix.GetLength(0), matrix.GetLength(1)];
             for (int i = 0; i < matrix.GetLength(0); i++)
             {
@@ -158,7 +202,7 @@ public class Matrix
                     result[i, j] = Cofactor(i, j) / determinant;
                 }
             }
-            return new Matrix(result);
+            return new Matrix(result).Transpose;
         }
     }
 }
