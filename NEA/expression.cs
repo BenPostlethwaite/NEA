@@ -1,67 +1,187 @@
+using System.Globalization;
+using System.Reflection.Metadata;
+using System.Reflection.Emit;
+using System.Runtime;
 using utils;
 namespace expression;
-
-
 public class Expression : ICloneable
 {
-    public static Utils utils = new Utils();
-    public Stack<string> rpnStack{get => UpdateRPNStack();}
-    public string value;
+    public static utils.Utils utils = new utils.Utils();
+    //public Stack<string> rpnStack{get => UpdateRPNStack();}
+    public Operator op;
+    public Operand value;
     public Expression parent;
-    public List<Expression> children = new List<Expression>();
+    public List<Expression> children;
     public bool isRoot => parent == null;
     public bool isLeaf => children.Count == 0;
-    public bool isVariable => isLeaf && !double.TryParse(value, out double d);
-    public bool isNumeric => isLeaf && double.TryParse(value, out double d);
-    public Operator op{get
+    public bool isVariable => isLeaf && value is Variable;
+    public bool isNumeric => isLeaf && value is Number;
+    public Expression(string value = "", List<Expression> children = null, Expression parent = null)
     {
-        if (isLeaf)
+        if (utils.IsOperator(value))
         {
-            return null;
+            this.op = utils.operators[value];
         }
-        return utils.operators.Where(o => o.symbol == value).First();
-    }}
-    public Expression(string value = "", Expression parent = null)
-    {
-        this.value = value;
-    }
-    public Expression(string value, List<Expression> children, Expression parent = null)
-    {
-        this.value = value;
+        else if (double.TryParse(value, out double _))
+        {
+            this.value = new Number(int.Parse(value));
+        }
+        else
+        {
+            this.value = new Variable(value);
+        }
         this.children = children;
+        this.parent = parent;
+
+        if (this.children == null)
+        {
+            this.children = new List<Expression>();
+        }
     }
-    public static Expression ExpressionFromRPN(string equation, string type)
+    public static Expression ExpressionFromString(string expression, string type)
     {
         Stack<string> setUpRpnStack;
-        List<string> split = equation.Split(' ').ToList();
-        FormatInput(split);
         if (type == "postfix")
         {
+            List<string> split = BasicFormat(expression);
             split.Reverse();
             setUpRpnStack = new Stack<string>(split);
+            return ExpressionTreeFromRPN(setUpRpnStack);
         }
         else if (type == "infix")
         {
-            setUpRpnStack = new Stack<string>(InfixToPostfix(split.ToArray()));
+            List<string> split = FormatInfix(expression);
+            return ExpressionTreeFromInfix(split);
+            //setUpRpnStack = new Stack<string>(InfixToPostfix(split.ToArray()));
         }
         else
         {
             throw new Exception("Invalid type");
         }
+    }
+    private static List<string> BasicFormat(string expression)
+    {
+        foreach (string op in utils.operators.Keys)
+        {
+            expression = expression.Replace(op, " " + op + " ");
+        }
+        expression = expression.Replace("(", " ( ");
+        expression = expression.Replace(")", " ) ");
 
-        return CreateExpressionTree(setUpRpnStack);
+        List<string> split = expression.Split(' ').Where(s => s != "").ToList();
+        return split;
+    }
+    private static List<string> FormatInfix(string expression)
+    {
+        List<string> split = BasicFormat(expression);            
+        List<string> newSplit = new List<string>();
+        
+        foreach (string s in split)
+        {
+            if (s.Length == 1)
+            {
+                newSplit.Add(s);
+                continue;
+            }
+            string newS = "";
+            foreach (char c in s)
+            {
+                if (char.IsLetter(c))
+                {
+                    if (newS != "")
+                    {
+                        newSplit.Add(newS);
+                        newS = "";
+                    }
+                    newSplit.Add(c.ToString());
+                    newS = "";
+                }
+                else
+                {
+                    newS += c;
+                }
+            }
+        }
+        split = newSplit;
+
+        newSplit = new List<string>();
+
+        for (int i = 0; i < split.Count; i++)
+        {
+            if ((i != 0 && split[i] == "(" && !utils.operators.Keys.Contains(split[i-1]) && split[i-1] != "(")
+            || (i != 0 && char.IsLetter(split[i-1][0]) && !utils.operators.Keys.Contains(split[i]) && split[i] != ")")
+            || (i != 0 && split[i-1] == ")" && !utils.operators.Keys.Contains(split[i]) && split[i] != ")")
+            || (i != 0 && char.IsLetter(split[i][0]) && !utils.operators.Keys.Contains(split[i-1])) && split[i-1] != "(")
+            {
+                newSplit.Add("*");
+            }
+            newSplit.Add(split[i]);
+        }            
+        return newSplit;
+    }
+    private static Expression ExpressionTreeFromInfix(List<string> split)
+    {
+        Stack<Expression> expressionStack = new Stack<Expression>();
+        Stack<string> operatorStack = new Stack<string>();
+        foreach (string s in split)
+        {
+            if (utils.IsOperator(s))
+            {
+                while (operatorStack.Count > 0 && (operatorStack.Peek() == "(" || utils.operators[operatorStack.Peek()].precedence >= utils.operators[s].precedence))
+                {
+                    if (operatorStack.Peek() == "(")
+                    {
+                        break;
+                    }
+                    Expression right = expressionStack.Pop();
+                    Expression left = expressionStack.Pop();
+                    Expression newExpr = new Expression(operatorStack.Pop(), new List<Expression>() {left, right});
+                    left.parent = newExpr;
+                    right.parent = newExpr;
+                    expressionStack.Push(newExpr);
+                }
+                operatorStack.Push(s);
+            }
+            else if (s == "(")
+            {
+                operatorStack.Push(s);
+            }
+            else if (s == ")")
+            {
+                while (operatorStack.Peek() != "(")
+                {
+                    Expression right = expressionStack.Pop();
+                    Expression left = expressionStack.Pop();
+                    Expression newExpr = new Expression(operatorStack.Pop(), new List<Expression>() {left, right});
+                    left.parent = newExpr;
+                    right.parent = newExpr;
+                    expressionStack.Push(newExpr);
+                }
+                operatorStack.Pop();
+            }
+            else
+            {
+                expressionStack.Push(new Expression(s));
+            }
+        }
+        while (operatorStack.Count > 0)
+        {
+            Expression right = expressionStack.Pop();
+            Expression left = expressionStack.Pop();
+            Expression newExpr = new Expression(operatorStack.Pop(), new List<Expression>() {left, right}, null);
+            left.parent = newExpr;
+            right.parent = newExpr;
+            expressionStack.Push(newExpr);
+        }
+        return expressionStack.Pop();
     }
     public override string ToString()
     {
         if (isLeaf)
         {
-            return value;
+            return value.ToString();
         }
         string output = "";
-        // if (!isRoot && op.precedence < parent.op.precedence)
-        // {
-        //     output += "(";
-        // }
         for (int i = 0; i < children.Count; i++)
         {
             if (!children[i].isLeaf && children[i].op.precedence < op.precedence)
@@ -73,25 +193,19 @@ public class Expression : ICloneable
             {
                 output += ")";
             }
-            // if (i < children.Count - 1 && op.symbol == "*" && children[i].isNumeric && (children[i + 1].isVariable || children[i+1].op.precedence < op.precedence))
-            // {
-            //     continue;
-            // }
-            if (i != children.Count - 1)
+
+            if (i == children.Count - 1 || (op.symbol == "*" && children[i + 1].isVariable))
             {
-                output += value;
+                continue;
             }
+            else{output += op.ToString();}
         }
-        // if (!isRoot && op.precedence < parent.op.precedence)
-        // {
-        //     output += ")";
-        // }
         output = output.Replace("+-", "-");
         output = output.Replace(")*(", ")(");
         output = output.Replace("*(", "(");
         output = output.Replace(")*", ")");
         output = output.Replace("-1*", "-");
-        
+    
         output = output.Replace("^2", "²");
         output = output.Replace("^3", "³");
         output = output.Replace("^4", "⁴");
@@ -100,11 +214,24 @@ public class Expression : ICloneable
         output = output.Replace("^7", "⁷");
         output = output.Replace("^8", "⁸");
         output = output.Replace("^9", "⁹");
-
-        
-        
+    
+        for (int i = 0; i < output.Length; i++)
+        {
+            if (output[i] == '*' && i < output.Length - 1 && char.IsLetter(output[i + 1]))
+            {
+                output = output.Remove(i, 1);
+            }
+        }
 
         return output;
+    }
+    public static bool operator ==(Expression a, Expression b)
+    {
+        return a.Equals(b);
+    }
+    public static bool operator !=(Expression a, Expression b)
+    {
+        return !a.Equals(b);
     }
     public override bool Equals(object obj)
     {
@@ -112,21 +239,33 @@ public class Expression : ICloneable
         {
             return false;
         }
-        if (obj.GetType() != typeof(Expression))
+        try
+        {
+            obj = (Expression) obj;
+        }
+        catch
         {
             return false;
         }
         Expression other = (Expression) obj;
 
-        if (value != other.value)
+        if (this.isLeaf && other.isLeaf)
+        {
+            if (!value.Equals(other.value))
+            {
+                return false;
+            }
+            else {return true;}
+        }
+        else if (this.isLeaf || other.isLeaf)
+        {
+            return false;
+        }
+        else if (!op.Equals(other.op))
         {
             return false;
         }
 
-        if (this.isLeaf && other.isLeaf)
-        {
-            return true;
-        }
         foreach (Expression child in children)
         {
             if (!other.children.Contains(child))
@@ -148,53 +287,20 @@ public class Expression : ICloneable
     }
     public object Clone()
     {
-        Expression clone = new Expression(value);
+        Expression clone;
+        if (isLeaf)
+        {
+            clone = new Expression(this.value.ToString());
+        }
+        else
+        {
+            clone = new Expression(this.op.ToString());
+        }
         foreach (Expression child in children)
         {
             clone.children.Add(child.Clone() as Expression);
         }
         return clone;
-    }
-    private static void FormatInput(List<string> split)
-    {
-        for (int i = 0; i < split.Count; i++)
-        {
-            if (!double.TryParse(split[i], out _) && !utils.IsOperator(split[i]))
-            {
-                if (split[i].Contains("+"))
-                {
-                    split[i] = split[i].Replace("+", " + ");
-                }
-                if (split[i].Contains("-"))
-                {
-                    split[i] = split[i].Replace("-", " - ");
-                }
-                if (split[i].Contains("*"))
-                {
-                    split[i] = split[i].Replace("*", " * ");
-                }
-                if (split[i].Contains("/"))
-                {
-                    split[i] = split[i].Replace("/", " / ");
-                }
-                if (split[i].Contains("^"))
-                {
-                    split[i] = split[i].Replace("^", " ^ ");
-                }
-                if (split[i].Contains("("))
-                {
-                    split[i] = split[i].Replace("(", " ( ");
-                }
-                if (split[i].Contains(")"))
-                {
-                    split[i] = split[i].Replace(")", " ) ");
-                }
-
-                List<string> toAdd = split[i].Split(' ').Where(x => x != "").ToList();
-                split.RemoveAt(i);
-                split.InsertRange(i, toAdd);
-            }
-        }
     }
     public static string PostfixToInfix(string[] exp)
     {
@@ -267,17 +373,16 @@ public class Expression : ICloneable
     }
     private static Stack<string> UpdateRPNStack(Expression expression)
     {
-        //Fix this so that it works for any number of children >= 2
         Stack<string> output = new Stack<string>();
         for (int i = 0; i < expression.children.Count-1; i++)
         {
-            output.Push(expression.value);
+            output.Push(expression.value.ToString());
         }
         for (int i = expression.children.Count-1; i>=0; i--)
         {
             if (expression.children[i].isLeaf)
             {
-                output.Push(expression.children[i].value);
+                output.Push(expression.children[i].value.ToString());
             }
             else
             {
@@ -290,55 +395,55 @@ public class Expression : ICloneable
         }
         return output;
     }
-    public double EvaluateFromRpn()
-    {
-        Stack<string> newStack = new Stack<string>(rpnStack.Reverse());
-        Stack<string> temp = new Stack<string>();
-        while (newStack.Count > 0)
-        {
-            string s = newStack.Pop();
-            if (utils.IsOperator(s))
-            {
-                double b = double.Parse(temp.Pop());
-                double a = double.Parse(temp.Pop());
-                double result = 0;
-                switch (s)
-                {
-                    case "+":
-                    {                        
-                        result = a + b;
-                        break;
-                    }
-                    case "-":
-                    {
-                        result = a - b;
-                        break;
-                    }
-                    case "*":
-                    {
-                        result = a * b;
-                        break;
-                    }
-                    case "/":
-                    {
-                        result = a / b;
-                        break;
-                    }
-                    case "^":
-                    {
-                        result = (double)Math.Pow(a, b);
-                        break;
-                    }
-                }
-                temp.Push(result.ToString());
-            }
-            else
-            {
-                temp.Push(s);
-            }
-        }
-        return double.Parse(temp.Pop());
-    }
+    // public double EvaluateFromRpn()
+    // {
+    //     Stack<string> newStack = new Stack<string>(rpnStack.Reverse());
+    //     Stack<string> temp = new Stack<string>();
+    //     while (newStack.Count > 0)
+    //     {
+    //         string s = newStack.Pop();
+    //         if (utils.IsOperator(s))
+    //         {
+    //             double b = double.Parse(temp.Pop());
+    //             double a = double.Parse(temp.Pop());
+    //             double result = 0;
+    //             switch (s)
+    //             {
+    //                 case "+":
+    //                 {                        
+    //                     result = a + b;
+    //                     break;
+    //                 }
+    //                 case "-":
+    //                 {
+    //                     result = a - b;
+    //                     break;
+    //                 }
+    //                 case "*":
+    //                 {
+    //                     result = a * b;
+    //                     break;
+    //                 }
+    //                 case "/":
+    //                 {
+    //                     result = a / b;
+    //                     break;
+    //                 }
+    //                 case "^":
+    //                 {
+    //                     result = (double)Math.Pow(a, b);
+    //                     break;
+    //                 }
+    //             }
+    //             temp.Push(result.ToString());
+    //         }
+    //         else
+    //         {
+    //             temp.Push(s);
+    //         }
+    //     }
+    //     return double.Parse(temp.Pop());
+    // }
     private static double GCD(double a, double b)
     {
         if (a == 0)
@@ -427,7 +532,7 @@ public class Expression : ICloneable
         rpn = new Stack<string>(temp);
         return rpn;
     }
-    public static Expression CreateExpressionTree(Stack<string> rpn)
+    public static Expression ExpressionTreeFromRPN(Stack<string> rpn)
     {
         Stack<Expression> stack = new Stack<Expression>();
         foreach (string s in rpn)
@@ -446,24 +551,60 @@ public class Expression : ICloneable
         }
         return stack.Pop();
     }     
-    public static void Substitute(Expression Expression, string variable, double value)
+    public void Substitute(string variable, string subIn)
     {
-        if (Expression.isLeaf)
+        Expression var = ExpressionFromString(variable, "infix");
+        if (Equals(var))
         {
-            if (Expression.value == variable)
+            CloneFrom(new Expression(subIn));
+        }
+        else
+        {
+            foreach (Expression child in children)
             {
-                Expression.value = value.ToString();
+                child.Substitute(variable, subIn);
+            }
+        }
+    }
+    public void Substitute(string variable, Expression subIn)
+    {
+        if (isLeaf)
+        {
+            if (value.ToString() == variable)
+            {
+                value = subIn.value;
+                children = subIn.children;
             }
         }
         else
         {
-            foreach (Expression child in Expression.children)
+            foreach (Expression child in children)
             {
-                Substitute(child, variable, value);
+                child.Substitute(variable, subIn);
             }
         }
     }
-    public void Simplify()
+    public void ExpandAndSimplify()
+    {
+        Expression newRoot;
+        do
+        {
+            newRoot = (Expression)this.Clone();
+            Simplify();
+            Distribute();
+            ExpandPowers();
+            Simplify();
+
+            foreach (Expression child in children)
+            {
+                if (!child.isLeaf)
+                {
+                    child.ExpandAndSimplify();
+                }
+            }
+        } while (!newRoot.Equals(this));
+    }
+    public virtual void Simplify()
     {
         Expression newRoot;
         do
@@ -472,41 +613,40 @@ public class Expression : ICloneable
             CombineAssociativeOperators();
             GeneralSimplify();
             CombineLikeTerms();
-        } while (!newRoot.Equals(this));
-        Distribute();
-        newRoot = null;
-        do
-        {
-            newRoot = (Expression)this.Clone();
             CombineAssociativeOperators();
-            GeneralSimplify();
-            CombineLikeTerms();
         } while (!newRoot.Equals(this));
     }
     private void CombineNumericTerms()
     {
+        foreach (Expression child in children)
+        {
+            if (!child.isLeaf && child.op.commutative)
+            {
+                child.CombineNumericTerms();
+            }
+        }
         List<Expression> numericChildren = children.Where(x => x.isNumeric).ToList();
         List<Expression> remainingChildren = children.Where(x => !x.isNumeric).ToList();
-        if (numericChildren.Count == 0)
+        if (numericChildren.Count <= 1)
         {
             return;
         }
-        Expression coefficient = new Expression(op.symbol, new List<Expression>(), parent);
-        coefficient.value = op.Evaluate(numericChildren.Select(x => double.Parse(x.value)).ToList()).ToString();
+        Expression coefficient = new Expression(op.symbol, numericChildren, parent);
+        coefficient.GeneralSimplify();
         if (remainingChildren.Count == 0)
         {
             value = coefficient.value;
             children = new List<Expression>();
             return;
         }
-        if (coefficient.value == "0" && value == "*")
+        if (coefficient.value.ToString() == "0" && op.ToString() == "*")
         {
-            value = "0";
+            value = new Number(0);
             children = new List<Expression>();
             return;
         }
         children = new List<Expression>();
-        if (value != "*" || coefficient.value != "1")
+        if (op.ToString() != "*" || coefficient.value.ToString() != "1")
         {
             children.Add(coefficient);
         }
@@ -514,8 +654,27 @@ public class Expression : ICloneable
         if (children.Count == 1)
         {
             value = children[0].value;
+            op = children[0].op;
             children = children[0].children;
         }
+    }
+    private bool AllChildrenAreNumeric()
+    {
+        foreach (Expression child in children)
+        {
+            if (!child.isLeaf)
+            {
+                if (!child.isNumeric)
+                {
+                    return false;
+                }
+                else if (!child.AllChildrenAreNumeric())
+                {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
     public void GeneralSimplify()
     {
@@ -531,19 +690,49 @@ public class Expression : ICloneable
                 child.GeneralSimplify();
             }
         }
-        if (value == "-")
+        if (op.symbol.ToString() == "-")
         {
-            value = "+";
-            for (int i = 1; i < children.Count; i++)
+            if (children.Count == 1)
             {
-                Expression newChild = new Expression("*", new List<Expression>() { new Expression("-1"), children[i] }, this);
-                newChild.GeneralSimplify();
-                children[i] = newChild;
+                value = null;
+                op = utils.operators["*"];
+                children.Insert(0, new Expression("-1"));
             }
+            else
+            {
+                value = null;
+                op = utils.operators["+"];
+                for (int i = 1; i < children.Count; i++)
+                {
+                    Expression newChild = new Expression("*", new List<Expression>() { new Expression("-1"), children[i] }, this);
+                    newChild.GeneralSimplify();
+                    children[i] = newChild;
+                }
+            }
+        }
+        if (op.ToString() == "/" && children.Count == 2)
+        {
+            SimplifyFraction();
+            return;           
+        }
+        if (children.Count == 0)
+        {
+            return;
         }
         if (op.commutative)
         {
-            CombineNumericTerms();
+            if (children.All(x => x.isNumeric))
+            {
+                int intValue = (int)op.Evaluate(children.Select(x => double.Parse(x.value.ToString())).ToList());
+                value = new Number(intValue);
+                op = null;
+                children = new List<Expression>();
+                return;
+            }
+            else
+            {
+                CombineNumericTerms();
+            }
         }
         if (isLeaf)
         {
@@ -553,126 +742,152 @@ public class Expression : ICloneable
         {
             for (int i = 1; i < children.Count; i++)
             {
-                if (children[i].value == "0")
+                if (children[i].isLeaf && children[i].value.ToString() == "0")
                 {
-                    value = "1";
+                    value = new Number(1);
+                    op = null;
                     children = new List<Expression>();
+                    return;
                 }
-                else if (children[i].value == "1")
+                else if (children[i].isLeaf && children[i].value.ToString() == "1")
                 {
                     children.RemoveAt(i);
                     if (children.Count == 1)
                     {
+                        op = children[0].op;
                         value = children[0].value;
                         children = children[0].children;
+                        return;
                     }
                 }
             }
+            if (!children[0].isLeaf && children[0].op.symbol == "^")
+            {
+                Expression base1 = children[0].children[0];
+                Expression exponent1 = children[0].children[1];
+                Expression exponent2 = children[1];
+                children = new List<Expression>();
+                base1.parent = this;
+                children.Add(base1);
+                children.Add(new Expression("*", new List<Expression>() { exponent1, exponent2 }, this));
+            }
+        }
+        if (children.Count == 1)
+        {
+            op = children[0].op;
+            value = children[0].value;
+            children = children[0].children;
+        }
+        if (op.symbol.ToString() == "*")
+        {
+            children.RemoveAll(c => c.isLeaf && c.value.ToString() == "1");
+            if (children.Any(c => c.isLeaf && c.value.ToString() == "0"))
+            {
+                value = new Number(0);
+                children = new List<Expression>();
+                return;
+            }
+            if (children.All(c=> c==children[0]))
+            {
+                int exponent = children.Count;
+                children = new List<Expression>() { children[0], new Expression(exponent.ToString())};
+                op = utils.operators["^"];
+                value = null;
+                return;
+            }
+            if (children.Any(c => !c.isLeaf && c.op.symbol == "/"))
+            {
+                List<Expression> numerators = children.Where(c => !c.isLeaf && c.op.symbol == "/").Select(c => c.children[0]).ToList();
+                List<Expression> denominators = children.Where(c => !c.isLeaf && c.op.symbol == "/").Select(c => c.children[1]).ToList();
+                List<Expression> notFraction = children.Where(c => c.isLeaf || (c.op.symbol != "/")).ToList();
+                List<Expression> newChildren = new List<Expression>();
+                numerators.AddRange(notFraction);
+
+                Expression newNumerator = new Expression("*", numerators, this);
+                Expression newDenominator = new Expression("*", denominators, this);
+                
+                if (newNumerator.children.Count == 1)
+                {
+                    newNumerator = newNumerator.children[0];
+                }
+                else if (newNumerator.children.Count == 0)
+                {
+                    newNumerator = new Expression("1", parent: this);
+                }
+                if (newDenominator.children.Count == 1)
+                {
+                    newDenominator = newDenominator.children[0];
+                }
+                else if (newDenominator.children.Count == 0)
+                {
+                    CloneFrom(newNumerator);
+                    return;
+                }
+                
+                newChildren.Add(newNumerator);
+                newChildren.Add(newDenominator);
+                children = newChildren;
+                op = utils.operators["/"];
+                value = null;
+                return;
+            }
+        }
+        else if (op.symbol.ToString() == "+")
+        {
+            children.RemoveAll(c => c.isLeaf && c.value.ToString() == "0");
         }
         if (children.Count == 1)
         {
             value = children[0].value;
             children = children[0].children;
+            return;
         }
-        //if all children are the same, and the operator is associative, then we can simplify
-        else if (children.All(c => c.Equals(children[0])))
+        for(int childNo = 0; childNo < children.Count; childNo++)
         {
-            if (op != null)
+            Expression child = children[childNo];
+            if (!isLeaf && child.isNumeric)
             {
-                if (op.associative)
-                {
-                    value = op.higherOrder.symbol;
-                    children = new List<Expression>() { children[0], new Expression(children.Count().ToString()) };
-                }
-            }
-        }
-        else if (children.Any(c => c.value == "0") && value == "*")
-        {
-            value = "0";
-            children = new List<Expression>();
-        }      
-        else if (children.Count == 2)
-        {
-            if (children[0].value == "1")
-            {
-                if (value == "*")
-                {
-                    value = children[1].value;
-                    children = new List<Expression>();
-                    return;                    
-                }
-            }
-            if (children[1].value == "1")
-            {
-                if (value == "*")
-                {
-                    value = children[0].value;
-                    children = new List<Expression>();
-                    return;
-                }
-                if (value == "/")
-                {
-                    value = children[0].value;
-                    children = new List<Expression>();
-                    return;
-                }
-            }
-            if (children[0].value == "0")
-            {
-                if (value == "+")
-                {
-                    value = children[1].value;
-                    children = new List<Expression>();
-                    return;
-                }
-                if (value == "-")
-                {
-                    value = "*";
-                    children = new List<Expression>(){new Expression("-1"), children[1]};
-                }
-            }
-            if (children[1].value == "0")
-            {
-                if (value == "*")
-                {
-                    value = children[0].value;
-                    children = new List<Expression>();
-                    return;
-                }
-                if (value == "/")
-                {
-                    value = children[0].value;
-                    children = new List<Expression>();
-                    return; 
-                }
-            }
-        }
-        if (op.symbol == "*")
-        {
-            foreach (Expression child in children)
-            {
-                if (child.value == "0")
-                {
-                    value = "0";
-                    children = new List<Expression>();
-                    return;
-                }
-                if (child.value == "1")
+                if ((child.value.ToString() == "1" && op.ToString() == "*") ||
+                 (child.value.ToString() == "0" && op.ToString() == "+"))
                 {
                     children.Remove(child);
-                    if (children.Count == 1)
-                    {
-                        value = children[0].value;
-                        children = children[0].children;
-                    }
+                }
+                if (child.value.ToString() == "0" && op.ToString() == "*")
+                {
+                    value = new Number(0);
+                    children = new List<Expression>();
+                    return;
+                }
+                if (child.value.ToString() == "0" && op.ToString() == "^")
+                {
+                    value = new Number(1);
+                    children = new List<Expression>();
                     return;
                 }
             }
+            if (children.Count == 1)
+            {
+                value = children[0].value;
+                op = children[0].op;
+                children = children[0].children;
+                return;
+            }
         }
-        return;
+        if (children.All(c => c.isNumeric))
+        {
+            double evaluation = op.Evaluate(children.Select(x => double.Parse(x.value.ToString())).ToList());
+            if (evaluation % 1 == 0)
+            {
+                op = null;
+                value = new Number((int)evaluation);
+                children = new List<Expression>();
+                return;
+            }
+        }
     }
     public void CombineAssociativeOperators()
     {
+
         for (int childNo = 0; childNo < children.Count; childNo++)
         {
             Expression child = children[childNo];
@@ -681,11 +896,14 @@ public class Expression : ICloneable
                 child.CombineAssociativeOperators();
             }
         }
-    
+        if (isLeaf || !op.associative)
+        {
+            return;
+        }
         List<Expression> newChildren = new List<Expression>();
         foreach (Expression child in children)
         {
-            if (child.value == value)
+            if (!child.isLeaf && child.op == op)
             {
                 newChildren.AddRange(child.children);
             }
@@ -695,24 +913,22 @@ public class Expression : ICloneable
             }
         }
         children = newChildren;
-        
+    
         return;
     }
     private void Distribute()
     {
-        foreach (Expression child in children)
+        if (isLeaf || op.symbol != "*")
         {
-            if (!child.isLeaf)
-            {
-                child.Distribute();
-            }
+            return;
         }
-        if (value != "*")
+        if (!children.All(c => c.isLeaf || c.op.commutative))
         {
             return;
         }
         List<List<Expression>> combinations = GetCombinations();
-        value = "+";
+        value = null;
+        op = utils.operators["+"];
         children = new List<Expression>();
         foreach (List<Expression> combination in combinations)
         {
@@ -725,11 +941,72 @@ public class Expression : ICloneable
         }
         if (children.Count == 1)
         {
+            op = children[0].op;
             value = children[0].value;
             children = children[0].children;
         }
         return;
     }  
+    private void ExpandPowers()
+    {
+        if (isLeaf || op.ToString() != "^")
+        {
+            return;
+        }
+        while (children.Count > 2)
+        {
+            Expression child1 = new Expression(op.symbol.ToString(), new List<Expression>() { children[0], children[1] }, this);
+            children.RemoveRange(0, 2);
+            children.Insert(0, child1);
+            
+        }
+        if (children[0].isLeaf)
+        {
+            return;
+        }
+        while (children[0].children.Count > 2)
+        {
+            Expression child1 = new Expression(children[0].op.symbol.ToString(), new List<Expression>() { children[0].children[0], children[0].children[1] }, this);
+            children[0].children.RemoveRange(0, 2);
+            children[0].children.Insert(0, child1);
+        }
+        if (!children[1].isNumeric)
+        {
+            return;
+        }
+        int exponent = int.Parse(children[1].value.ToString());
+        Expression baseExpression = children[0];
+
+        //binomial expansion
+        if (baseExpression.op.ToString() == "+")
+        {
+            value = null;
+            op = utils.operators["+"];
+            children = new List<Expression>();
+            for (int i = 0; i <= exponent; i++)
+            {
+                Expression newChild = new Expression("*", new List<Expression>(), this);
+
+                Expression coefficient = new Expression(utils.Combination(exponent, i).ToString(), new List<Expression>(), newChild);
+                Expression part1 = new Expression("^", new List<Expression>() { baseExpression.children[0], new Expression(i.ToString()) }, newChild);
+                Expression part2 = new Expression("^", new List<Expression>() { baseExpression.children[1], new Expression((exponent - i).ToString()) }, newChild);
+                
+                newChild = new Expression("*", new List<Expression>() { coefficient, part1, part2 }, this);
+                children.Add(newChild);
+            }
+        }
+        else if (baseExpression.op.ToString() == "*")
+        {
+            value = null;
+            op = utils.operators["*"];
+            children = new List<Expression>();
+            foreach (Expression child in baseExpression.children)
+            {
+                children.Add(new Expression("^", new List<Expression>() { child, new Expression(exponent.ToString()) }, this));
+            }
+            
+        }
+    }
     private List<List<Expression>> GetCombinations()
     {
         List<List<Expression>> currentCombinations = new List<List<Expression>>();
@@ -765,7 +1042,7 @@ public class Expression : ICloneable
                 {
                     foreach (Expression child in children[index].children)
                     {
-                    
+                
                         List<Expression> newCombination = new List<Expression>(combination);
                         newCombination.Add(child);
                         newCombinations.Add(newCombination);
@@ -775,6 +1052,7 @@ public class Expression : ICloneable
                 {
                     List<Expression> newCombination = new List<Expression>(combination);
                     newCombination.Add(children[index]);
+                    newCombinations.Add(newCombination);
                 }
             }
             currentCombinations = newCombinations;
@@ -783,6 +1061,7 @@ public class Expression : ICloneable
     }
     public void CombineLikeTerms()
     {
+        //this sucks
         for (int i = 0; i < children.Count; i++)
         {
             if (!children[i].isLeaf)
@@ -790,11 +1069,13 @@ public class Expression : ICloneable
                 children[i].CombineLikeTerms();
             }
         }
-
-        if (value != "+")
+        if (!isLeaf && !op.commutative)
         {
             return;
         }
+
+        Operator oldOperator = op;
+
         List<(Expression remaining, Expression coefficient)> terms = new List<(Expression, Expression)>();
         foreach (Expression child in children)
         {
@@ -840,7 +1121,7 @@ public class Expression : ICloneable
                 }
                 remaining.GeneralSimplify();
                 coefficient.GeneralSimplify();
-                
+            
                 if (terms.Any(t => t.remaining.Equals(remaining)))
                 {
                     (Expression remaining, Expression coefficient) match = terms.Where(t => t.remaining.Equals(remaining)).FirstOrDefault();
@@ -883,15 +1164,403 @@ public class Expression : ICloneable
         children = new List<Expression>();
         foreach (var term in terms)
         {
-            if (term.coefficient.value == "1")
+            if (term.coefficient.isLeaf && term.coefficient.value.ToString() == "1")
             {
                 children.Add(term.remaining);
             }
             else
             {
-                children.Add(new Expression("*", new List<Expression>() { term.coefficient, term.remaining}));
+                children.Add(new Expression(oldOperator.higherOrder.symbol, new List<Expression>() { term.remaining, term.coefficient}));
             }
         }
         return;
     }
+    public void CloneFrom(Expression expression)
+    {
+        op = expression.op;
+        value = expression.value;
+        children = new List<Expression>();
+        foreach (Expression child in expression.children)
+        {
+            children.Add(child.Clone() as Expression);
+        }
+    }
+    private static List<Expression> CommonFactors(List<Expression> list)
+    {
+        for (int i=0; i < list.Count; i++)
+        {
+            if (list[i].isLeaf || list[i].op.ToString() != "*")
+            {
+                list[i] = new Expression("*", new List<Expression>(){list[i]});
+            }
+        }
+
+        List<Expression> commonFactors = new List<Expression>();
+        for (int i = 0; i < list[0].children.Count; i++)
+        {
+            if (list[0].children.Count == 0)
+            {
+                return commonFactors;
+            }
+            Expression factor;
+            //Improve line below, maybe check if exponent is numeric, or somehow if not test the whole thing as a factor
+            if (!list[0].children[i].isLeaf && list[0].children[i].op.ToString() == "^")
+            {
+                factor = list[0].children[i].children[0];
+            }
+            else
+            {
+                factor = list[0].children[i];
+            }
+            bool isCommon = true;
+            for (int j = 1; j < list.Count; j++)
+            {
+                if (list[j].children.Count == 0)
+                {
+                    return commonFactors;
+                }
+
+                bool commonForThisExpression = false;
+                for (int k = 0; k < list[j].children.Count; k++)
+                {
+                    Expression part = list[j].children[k];
+                    if (!part.isLeaf && part.op.ToString() == "^")
+                    {
+                        if (part.children[0].Equals(factor))
+                        {
+                            commonForThisExpression = true;
+                            break;
+                        }
+                    }
+                    else if (part.Equals(factor))
+                    {
+                        commonForThisExpression = true;
+                        break;
+                    }
+
+                }
+                if (!commonForThisExpression)
+                {
+                    isCommon = false;
+                    break;
+                }
+            }
+            if (isCommon)
+            {
+                commonFactors.Add(factor);
+                i--;
+                foreach (Expression expression in list)
+                {
+                    foreach (Expression part in expression.children)
+                    {
+                        if (!part.isLeaf && part.op.ToString() == "^")
+                        {
+                            if (part.children[0].Equals(factor))
+                            {
+                                part.children[1] = (Expression)part.children[1].Clone() - new Expression("1");
+                                part.Simplify();
+                            }
+                            break;
+                        }
+                        else if (part.Equals(factor))
+                        {
+                            expression.children.Remove(part);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return commonFactors;
+    }
+    public void Factorise()
+    {
+        if (isLeaf)
+        {
+            return;
+        }
+        
+        Expression copy = Clone() as Expression;
+        copy.Simplify();
+        copy.ConstantsToPrimeFactors();
+        copy.CombineAssociativeOperators();
+        if (copy.op.symbol != "+")
+        {
+            CloneFrom(copy);
+            return;
+        }
+        List<Expression> commonFactors = CommonFactors(copy.children);
+        for (int i = 0; i < copy.children.Count; i++)
+        {
+            if (copy.children[i].children.Count == 0)
+            {
+                copy.children[i] = new Expression("1");
+            }
+            else if (copy.children[i].children.Count == 1)
+            {
+                copy.children[i] = copy.children[i].children[0];
+            }
+        }
+        Expression commonFactorsMultiplied;
+        copy.Simplify();
+        if (commonFactors.Count == 0)
+        {
+            return;
+        }
+        else if (commonFactors.Count == 1)
+        {
+            commonFactorsMultiplied = commonFactors[0];
+        }
+        else
+        {
+            commonFactorsMultiplied = new Expression("*", commonFactors);
+            commonFactorsMultiplied.Simplify();
+        }
+        CloneFrom(commonFactorsMultiplied*copy);
+        Simplify();
+    }
+    private void ConstantsToPrimeFactors()
+    {
+        foreach (Expression child in children)
+        {
+            child.ConstantsToPrimeFactors();
+        }
+        if (isNumeric)
+        {
+            List<int> primeFactors = (value as Number).primeFactors;
+            children = new List<Expression>();
+            foreach (int factor in primeFactors)
+            {
+                children.Add(new Expression(factor.ToString()));
+            }
+            if (children.Count == 1)
+            {
+                CloneFrom(children[0]);
+            }
+            else
+            {
+                value = null;
+                op = utils.operators["*"];
+            }
+        }
+
+    }
+    private void SimplifyFraction()
+    {
+        if (op.symbol != "/")
+        {
+            return;
+        }
+        Expression numerator = children[0];
+        Expression denominator = children[1];
+
+        numerator.Factorise();
+        denominator.Factorise();
+
+        
+        if (numerator.isLeaf)
+        {
+            numerator = new Expression("*", new List<Expression>() {numerator.Clone() as Expression});
+        }
+        else if (numerator.op.symbol != "*")
+        {
+            return;
+        }
+        if (denominator.isLeaf || denominator.op.symbol != "*")
+        {
+            denominator = new Expression("*", new List<Expression>() { denominator.Clone() as Expression });
+        }
+        else if (denominator.op.symbol != "*")
+        {
+            return;
+        }
+        List<Expression> commonFactors = new List<Expression>();
+
+        for (int i = 0; i < numerator.children.Count; i++)
+        {
+            for (int j = 0; j < denominator.children.Count; j++)
+            {
+                if (numerator.children[i].Equals(denominator.children[j]))
+                {
+                    commonFactors.Add(numerator.children[i]);
+                    numerator.children.RemoveAt(i);
+                    denominator.children.RemoveAt(j);
+                    i--;
+                    break;
+                }
+            }
+        }
+        if (numerator.children.Count == 0)
+        {
+            numerator = new Expression("1");
+        }
+        else if (numerator.children.Count == 1)
+        {
+            numerator = numerator.children[0];
+        }
+
+        if (denominator.children.Count == 0)
+        {
+            CloneFrom(numerator);
+            return;
+        }
+        else if (denominator.children.Count == 1)
+        {
+            denominator = denominator.children[0];
+        }
+        CloneFrom(new Expression("/", new List<Expression>() { numerator, denominator }));
+    }   
+    //TODO: Rationalise Denominator
+    public void RationaliseDenominator()
+    {
+        if (isLeaf)
+        {
+            return;
+        }
+        if (op.symbol != "/")
+        {
+            return;
+        }
+        Expression numerator = children[0];
+        Expression denominator = children[1];
+        if (denominator.isLeaf)
+        {
+            return;
+        }
+
+
+    }
+    public static Expression operator +(Expression a, Expression b)
+    {
+        Expression toReturn = new Expression("+", new List<Expression>() { a, b });
+        a.parent = toReturn;
+        b.parent = toReturn;
+        return toReturn;
+    }
+    public static Expression operator -(Expression a, Expression b)
+    {
+        Expression toReturn = new Expression("-", new List<Expression>() { a, b });
+        a.parent = toReturn;
+        b.parent = toReturn;
+        return toReturn;
+    }
+    public static Expression operator *(Expression a, Expression b)
+    {
+        Expression toReturn = new Expression("*", new List<Expression>() { a, b });
+        a.parent = toReturn;
+        b.parent = toReturn;
+        return toReturn;
+    }
+    public static Expression operator /(Expression a, Expression b)
+    {
+        Expression toReturn = new Expression("/", new List<Expression>() { a, b });
+        a.parent = toReturn;
+        b.parent = toReturn;
+        return toReturn;
+    }
+    public static Expression operator ^(Expression a, Expression b)
+    {
+        Expression toReturn = new Expression("^", new List<Expression>() { a, b });
+        a.parent = toReturn;
+        b.parent = toReturn;
+        return toReturn;
+    }
+    public static Expression operator +(Expression a, double b)
+    => a + new Expression(b.ToString());
+    public static Expression operator -(Expression a, double b)
+    => a - new Expression(b.ToString());
+    public static Expression operator *(Expression a, double b)
+    => a * new Expression(b.ToString());
+    public static Expression operator /(Expression a, double b)
+    => a / new Expression(b.ToString());
+    public static Expression operator ^(Expression a, double b)
+    => a ^ new Expression(b.ToString());
+    public static Expression operator +(double a, Expression b)
+    => new Expression(a.ToString()) + b;
+    public static Expression operator -(double a, Expression b)
+    => new Expression(a.ToString()) - b;
+    public static Expression operator *(double a, Expression b)
+    => new Expression(a.ToString()) * b;
+    public static Expression operator /(double a, Expression b)
+    => new Expression(a.ToString()) / b;
+    public static Expression operator ^(double a, Expression b)
+    => new Expression(a.ToString()) ^ b;
+    public static Expression operator -(Expression a)
+    => new Expression("0") - a;
+
+}
+class Number : Operand, IComparable<Number>
+{
+    public int value;
+    public bool IsPositive => value >= 0;
+    public bool IsNegative => value < 0;
+    public bool isNatural => value > 0;
+    public List<int> primeFactors{get
+    {
+        List<int> factors = new List<int>();
+        int n = (int)value;
+        if (n < 0)
+        {
+            n = -n;
+            factors.Add(-1);
+        }
+        for (int i = 2; i <= n / i; i++)
+        {
+            while (n % i == 0)
+            {
+                factors.Add(i);
+                n /= i;
+            }
+        }
+        if (n > 1)
+        {
+            factors.Add(n);
+        }
+        return factors;
+    }}
+    public Number(int value)
+    {
+        this.value = value;
+    }
+    public int CompareTo(Number other)
+    {
+        return value.CompareTo(other.value);
+    }
+    public override string ToString()
+    {
+        return value.ToString();
+    }
+    public override bool Equals(object obj)
+    {
+        if (obj is Number)
+        {
+            return value == ((Number)obj).value;
+        }
+        return false;
+    }
+}
+class Variable : Operand
+{
+    string name;
+    public Variable(string name)
+    {
+        this.name = name;
+    }
+    public override string ToString()
+    {
+        return name;
+    }
+    public override bool Equals(object obj)
+    {
+        if (obj is Variable)
+        {
+            return name == ((Variable)obj).name;
+        }
+        return false;
+    }
+}
+public interface Operand
+{
+    public string ToString();
+    public bool Equals(object obj);
 }

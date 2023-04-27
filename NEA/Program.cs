@@ -1,16 +1,14 @@
-using System.Numerics;
+using equation;
 using expression;
 using complex;
-namespace NEA;
-
-
-public class Program
+namespace NEA
 {
-    public static void Main(string[] args)
+    public class Program
     {
-        Expression e = Expression.ExpressionFromRPN("(x+2*a)*(x-2)", "infix");
-        Console.WriteLine(e);
-        e.Simplify();
-        Console.WriteLine(e);
+        public static void Main(string[] args)
+        {
+            Complex c = new Complex("1+2i");
+            Complex d = c^(new Complex("1/2"));
+        }
     }
 }

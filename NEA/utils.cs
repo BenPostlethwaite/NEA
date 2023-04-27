@@ -2,14 +2,44 @@ namespace utils;
 
 public class Utils
 {
-    public List<Operator> operators;
+    public Dictionary<string, Operator> operators;
     public Utils()
     {
         SetUpOperators();
     }
+    public int Combination(int n, int r)
+    {
+        if (r > n)
+        {
+            return 0;
+        }
+        if (r == 0 || r == n)
+        {
+            return 1;
+        }
+        return Combination(n - 1, r - 1) + Combination(n - 1, r);
+    }
+    public List<int> GetPrimeFactors(int num)
+    {
+        List<int> factors = new List<int>();
+        int i = 2;
+        while (i <= num)
+        {
+            if (num % i == 0)
+            {
+                factors.Add(i);
+                num /= i;
+            }
+            else
+            {
+                i++;
+            }
+        }
+        return factors;
+    }
     public void SetUpOperators()
     {
-        operators = new List<Operator>();
+        operators = new Dictionary<string, Operator>();
         Add add = new Add();
         Subtract subtract = new Subtract();
         Multiply multiply = new Multiply();
@@ -27,23 +57,23 @@ public class Utils
         multiply.higherOrder = power;
         multiply.lowerOrder = add;
 
-        operators.Add(add);
-        operators.Add(subtract);
-        operators.Add(multiply);
-        operators.Add(divide);
-        operators.Add(power);
+        operators.Add("+", add);
+        operators.Add("-", subtract);
+        operators.Add("*", multiply);
+        operators.Add("/", divide);
+        operators.Add("^", power);
     }
     public bool IsOperator(string s)
     {
-        return operators.Select(x => x.symbol).Contains(s);
+        return operators.ContainsKey(s);
     }
     public bool IsAssociative(string s)
     {
-        return operators.Where(x => x.symbol == s).Select(x => x.associative).First();
+        return operators[s].associative;
     }
     public int GetPrecedence(string s)
     {
-        return operators.Where(x => x.symbol == s).Select(x => x.precedence).First();
+        return operators[s].precedence;
     }
 }
 public abstract class Operator
@@ -66,98 +96,99 @@ public abstract class Operator
             throw new Exception("Invalid operator");
         }
     }
-    public class Add : Operator
+public class Add : Operator
+{
+    public Add()
     {
-        public Add()
-        {
-            this.symbol = "+";
-            this.commutative = true;
-            this.associative = true;
-            this.precedence = 1;
-        }
-        override public double Evaluate(List<double> operands)
-        {
-            double result = 0;
-            foreach (double operand in operands)
-            {
-                result += operand;
-            }
-            return result;
-        }
+        this.symbol = "+";
+        this.commutative = true;
+        this.associative = true;
+        this.precedence = 1;
     }
-    public class Subtract : Operator
+    override public double Evaluate(List<double> operands)
     {
-        public Subtract()
+        double result = 0;
+        foreach (double operand in operands)
         {
-            this.symbol = "-";
-            this.commutative = false;
-            this.associative = false;
-            this.precedence = 1;
+            result += operand;
         }
-        override public double Evaluate(List<double> operands)
-        {
-            double result = operands[0];
-            for (int i = 1; i < operands.Count; i++)
-            {
-                result -= operands[i];
-            }
-            return result;
-        }
+        return result;
     }
-    public class Multiply : Operator
+}
+public class Subtract : Operator
+{
+    public Subtract()
     {
-        public Multiply()
-        {
-            this.symbol = "*";
-            this.commutative = true;
-            this.associative = true;
-            this.precedence = 2;
-        }
-        override public double Evaluate(List<double> operands)
-        {
-            double result = 1;
-            foreach (double operand in operands)
-            {
-                result *= operand;
-            }
-            return result;
-        }
+        this.symbol = "-";
+        this.commutative = false;
+        this.associative = false;
+        this.precedence = 1;
     }
-    public class Divide : Operator
+    override public double Evaluate(List<double> operands)
     {
-        public Divide()
+        double result = operands[0];
+        for (int i = 1; i < operands.Count; i++)
         {
-            this.symbol = "/";
-            this.commutative = false;
-            this.associative = false;
-            this.precedence = 2;
+            result -= operands[i];
         }
-        override public double Evaluate(List<double> operands)
-        {
-            double result = operands[0];
-            for (int i = 1; i < operands.Count; i++)
-            {
-                result /= operands[i];
-            }
-            return result;
-        }
+        return result;
     }
-    public class Power : Operator
+}
+public class Multiply : Operator
+{
+    public Multiply()
     {
-        public Power()
-        {
-            this.symbol = "^";
-            this.commutative = false;
-            this.associative = false;
-            this.precedence = 3;
-        }
-        override public double Evaluate(List<double> operands)
-        {
-            double result = operands[0];
-            for (int i = 1; i < operands.Count; i++)
-            {
-                result = Math.Pow(result, operands[i]);
-            }
-            return result;
-        }
+        this.symbol = "*";
+        this.commutative = true;
+        this.associative = true;
+        this.precedence = 2;
     }
+    override public double Evaluate(List<double> operands)
+    {
+        double result = 1;
+        foreach (double operand in operands)
+        {
+            result *= operand;
+        }
+        return result;
+    }
+}
+public class Divide : Operator
+{
+    public Divide()
+    {
+        this.symbol = "/";
+        this.commutative = false;
+        this.associative = false;
+        this.precedence = 2;
+    }
+    override public double Evaluate(List<double> operands)
+    {
+        double result = operands[0];
+        for (int i = 1; i < operands.Count; i++)
+        {
+            result /= operands[i];
+        }
+        return result;
+    }
+}
+public class Power : Operator
+{
+    public Power()
+    {
+        this.symbol = "^";
+        this.commutative = false;
+        this.associative = false;
+        this.precedence = 3;
+    }
+    override public double Evaluate(List<double> operands)
+    {
+        double result = operands[0];
+        for (int i = 1; i < operands.Count; i++)
+        {
+            result = Math.Pow(result, operands[i]);
+        }
+        return result;
+    }
+}
+
